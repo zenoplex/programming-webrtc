@@ -6,7 +6,8 @@
     "ssl-proxy": "local-ssl-proxy --key cert/localhost.key --cert cert/localhost.crt --source 4200 --target 4201",
     "start": "nx serve",
     "build": "nx build",
-    "test": "nx test"
+    "test": "nx test",
+    "heroku-postbuild": "nx build $PROJECT_NAME --prod"
   },
   "private": true,
   "dependencies": {
