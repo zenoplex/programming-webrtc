@@ -18,7 +18,7 @@ const Page = () => {
   
   
 
-  console.log(process.env.NX_API_ENDPOINT);
+  console.log(process.env.NX_API_ORIGIN);
   // useEffect(() => {
   //   fetch('/api').then(res => res.json()).then(console.log)
   // }, [])
