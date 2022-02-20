@@ -2,7 +2,10 @@ import * as express from 'express';
 import * as https from 'https';
 import * as fs from 'fs';
 import { Server } from 'socket.io';
-import { PEER_CONNECTED_EVENT, PEER_DISCONNECTED_EVENT } from '@programming-webrtc/shared';
+import {
+  PEER_CONNECTED_EVENT,
+  PEER_DISCONNECTED_EVENT,
+} from '@programming-webrtc/shared';
 
 const app = express();
 const hostname = 'localhost';

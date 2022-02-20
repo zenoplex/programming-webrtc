@@ -1,9 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import {
-  ThemeIcon,
-  useMantineTheme,  
-} from '@mantine/core';
+import { ThemeIcon, useMantineTheme } from '@mantine/core';
 import { createStyles, MantineTheme } from '@mantine/core';
 
 const useStyles = createStyles((theme: MantineTheme) => ({

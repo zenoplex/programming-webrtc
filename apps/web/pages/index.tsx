@@ -15,9 +15,6 @@ import { RocketIcon } from '@modulz/radix-icons';
 import NavBarLink from '../components/NavBarLink';
 
 const Page = () => {
-  
-  
-
   console.log(process.env.NX_API_ORIGIN);
   // useEffect(() => {
   //   fetch('/api').then(res => res.json()).then(console.log)
@@ -32,13 +29,9 @@ const Page = () => {
 
   useEffect(() => {
     showNotification();
-
-    
   }, []);
 
-  return (
-    <div>yyyy</div>
-  );
+  return <div>yyyy</div>;
 };
 
 export default Page;

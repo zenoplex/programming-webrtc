@@ -116,21 +116,20 @@ const Page = () => {
                 {!isConnected ? 'Join' : 'Leave'}
               </Button>
             </Group>
-        
           </Grid.Col>
         </Grid>
-          
+
         <Grid>
           <Grid.Col span={6}>
             <Card shadow="sm" padding="lg">
               <Card.Section>
-                <video 
-                ref={v => v?.srcObject = myStream}
-                autoPlay
-      muted
-      playsInline
-      style={{ width: '100%'}}
-       />
+                <video
+                  ref={(v) => { if (v) v.srcObject = myStream }}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{ width: '100%' }}
+                />
               </Card.Section>
 
               <Text weight={500} size="lg">
@@ -160,7 +159,6 @@ const Page = () => {
             </Card>
           </Grid.Col>
         </Grid>
-        
       </Grid.Col>
       <Grid.Col span={6}>
         <div style={{ height: '100%' }}>
