@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Grid,
   Container,
+  Card,
+  Text,
   TextInput,
   Tooltip,
   Group,
@@ -16,8 +18,17 @@ import { io, Socket } from 'socket.io-client';
 import { HomeIcon, ChatBubbleIcon, ReloadIcon } from '@modulz/radix-icons';
 import { DEFAULT_THEME } from '@mantine/core';
 import { randGitBranch, seed } from '@ngneat/falso';
+import {
+  PEER_CONNECTED_EVENT,
+  PEER_DISCONNECTED_EVENT,
+} from '@programming-webrtc/shared';
 
 seed('seed');
+
+const mediaConstraits = {
+  video: true,
+  audio: false,
+};
 
 const Page = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -37,12 +48,33 @@ const Page = () => {
       setIsConnected(false);
     });
 
+    sc.on(PEER_CONNECTED_EVENT, (...args) => {
+      console.log(args);
+    });
+
+    sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
+      console.log(args);
+    });
+
     setSocket(sc);
 
     return () => {
       sc?.close();
     };
   }, [roomId]);
+
+  const [myStream, setMyStream] = useState<MediaStream | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const stream = new MediaStream();
+      const userMedia = await navigator.mediaDevices.getUserMedia(
+        mediaConstraits
+      );
+      stream.addTrack(userMedia.getTracks()[0]);
+      setMyStream(stream);
+    })();
+  }, []);
 
   const onJoinClick = useCallback(() => {
     if (isConnected) {
@@ -52,38 +84,83 @@ const Page = () => {
     }
   }, [isConnected, socket]);
 
-  
   const onGenerateRoomIdClick = useCallback(() => {
     setRoomId(randGitBranch());
   }, []);
 
-
   return (
     <Grid grow>
       <Grid.Col span={6}>
-        <Group>
-          <TextInput
-            value={roomId}
-            readOnly
-            placeholder="Room id"
-            required
-            icon={<HomeIcon />}
-            rightSection={
-              <Tooltip label="Change room id">
-                <UnstyledButton
-                  style={{ lineHeight: 0 }}
-                  onClick={onGenerateRoomIdClick}
-                >
-                  <ReloadIcon color={DEFAULT_THEME.colors.dark[1]} />
-                </UnstyledButton>
-              </Tooltip>
-            }
-          />
+        <Grid>
+          <Grid.Col span={12}>
+            <Group>
+              <TextInput
+                value={roomId}
+                readOnly
+                placeholder="Room id"
+                required
+                icon={<HomeIcon />}
+                rightSection={
+                  <Tooltip label="Change room id">
+                    <UnstyledButton
+                      style={{ lineHeight: 0 }}
+                      onClick={onGenerateRoomIdClick}
+                    >
+                      <ReloadIcon color={DEFAULT_THEME.colors.dark[1]} />
+                    </UnstyledButton>
+                  </Tooltip>
+                }
+              />
 
-          <Button onClick={onJoinClick}>
-            {!isConnected ? 'Join' : 'Leave'}
-          </Button>
-        </Group>
+              <Button onClick={onJoinClick}>
+                {!isConnected ? 'Join' : 'Leave'}
+              </Button>
+            </Group>
+        
+          </Grid.Col>
+        </Grid>
+          
+        <Grid>
+          <Grid.Col span={6}>
+            <Card shadow="sm" padding="lg">
+              <Card.Section>
+                <video 
+                ref={v => v?.srcObject = myStream}
+                autoPlay
+      muted
+      playsInline
+      style={{ width: '100%'}}
+       />
+              </Card.Section>
+
+              <Text weight={500} size="lg">
+                You've won a million dollars in cash!
+              </Text>
+
+              <Text size="sm">
+                Please click anywhere on this card to claim your reward, this is
+                not a fraud, trust us
+              </Text>
+            </Card>
+          </Grid.Col>
+          <Grid.Col span={6}>
+            <Card shadow="sm" padding="lg">
+              <Card.Section>
+                <video />
+              </Card.Section>
+
+              <Text weight={500} size="lg">
+                You've won a million dollars in cash!
+              </Text>
+
+              <Text size="sm">
+                Please click anywhere on this card to claim your reward, this is
+                not a fraud, trust us
+              </Text>
+            </Card>
+          </Grid.Col>
+        </Grid>
+        
       </Grid.Col>
       <Grid.Col span={6}>
         <div style={{ height: '100%' }}>

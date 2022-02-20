@@ -2,6 +2,7 @@ import * as express from 'express';
 import * as https from 'https';
 import * as fs from 'fs';
 import { Server } from 'socket.io';
+import { PEER_CONNECTED_EVENT, PEER_DISCONNECTED_EVENT } from '@programming-webrtc/shared';
 
 const app = express();
 const hostname = 'localhost';
@@ -46,7 +47,7 @@ namespace.on('connect', (socket) => {
   console.log('Socket nsp.name:', name);
   console.log('Socket id:', socket.id);
 
-  socket.broadcast.emit('connected peer');
+  socket.broadcast.emit(PEER_CONNECTED_EVENT);
 
   socket.on('signal', (data) => {
     socket.broadcast.emit('signal', data);
@@ -54,6 +55,6 @@ namespace.on('connect', (socket) => {
 
   socket.on('disconnect', (reason) => {
     console.log('disconnect:', reason);
-    namespace.emit('disconnected peer');
+    namespace.emit(PEER_DISCONNECTED_EVENT);
   });
 });
