@@ -15,12 +15,19 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { io, Socket } from 'socket.io-client';
-import { HomeIcon, ChatBubbleIcon, ReloadIcon } from '@modulz/radix-icons';
+import {
+  HomeIcon,
+  ChatBubbleIcon,
+  ReloadIcon,
+  StarFilledIcon,
+  StarIcon,
+} from '@modulz/radix-icons';
 import { DEFAULT_THEME } from '@mantine/core';
 import { randGitBranch, seed } from '@ngneat/falso';
 import {
   PEER_CONNECTED_EVENT,
   PEER_DISCONNECTED_EVENT,
+  SIGNAL_EVENT,
 } from '@programming-webrtc/shared';
 
 seed('seed');
@@ -34,13 +41,47 @@ const Page = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [roomId, setRoomId] = useState(randGitBranch());
+  const isPolite = useRef(false);
+  const isMakingOffer = useRef(false);
+  const isIgnoringOffer = useRef(false);
+  const isSettingRemoteAnswerPending = useRef(false);
+  // const [peer, setPeer] = useState<RTCPeerConnection | null>(null);
+  const peer = useRef<RTCPeerConnection | null>(null);
+  const myStream = useRef<MediaStream | null>(null);
+  const myVideoRef = useRef<HTMLVideoElement | null>(null);
+  const peerVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     const apiOrigin = process.env.NX_API_ORIGIN;
     const sc = io(`${apiOrigin}/${roomId}`, { autoConnect: false });
+    const peer = new RTCPeerConnection({});
+
     sc.on('connect', () => {
       console.log('connect');
       setIsConnected(true);
+
+      peer.onnegotiationneeded = async () => {
+        isMakingOffer.current = true;
+        await peer.setLocalDescription();
+        sc.emit(SIGNAL_EVENT, { description: peer.localDescription });
+        isMakingOffer.current = false;
+      };
+      peer.onicecandidate = ({ candidate }) => {
+        console.log('Attempting to handle an ICE candidate...');
+        sc.emit(SIGNAL_EVENT, { candidate: candidate });
+      };
+      peer.ontrack = ({ track, streams }) => {
+        peerVideoRef.current.srcObject = streams[0];
+      }
+      
+
+      if (myStream.current) {
+        for (const track of myStream.current.getTracks()) {
+          peer.addTrack(track, myStream.current);
+        }
+      }
+
+      // peer.ontrack = handleRtcPeerTrack;
     });
 
     sc.on('disconnect', (reason) => {
@@ -49,12 +90,66 @@ const Page = () => {
     });
 
     sc.on(PEER_CONNECTED_EVENT, (...args) => {
-      console.log(args);
+      console.log('I am polite');
+      isPolite.current = true;
     });
 
     sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
       console.log(args);
     });
+
+    sc.on(
+      SIGNAL_EVENT,
+      async ({
+        description,
+        candidate,
+      }: {
+        description?: RTCSessionDescription;
+        candidate: RTCIceCandidate;
+      }) => {
+        console.log({ description, candidate });
+
+        // offer/answer
+        if (description) {
+          // readyForOffer is true
+          // 1) when not in middle of making an offer
+          // 2) RTCSignalingState is stable OR isSettingRemoteAnswerPending is true
+          const readyForOffer =
+            !isMakingOffer.current &&
+            (peer.signalingState === 'stable' ||
+              isSettingRemoteAnswerPending.current);
+          const offerCollision = description.type === 'offer' && !readyForOffer;
+          isIgnoringOffer.current = !isPolite.current && offerCollision;
+
+          // ignore offer and exit callback
+          if (isIgnoringOffer.current) {
+            return;
+          }
+
+          // If not ignoring offers then has no choice but to respond
+          isSettingRemoteAnswerPending.current = description.type === 'answer';
+          console.log('description', description);
+          await peer.setRemoteDescription(description);
+          isSettingRemoteAnswerPending.current = false;
+
+          // Has to respond to remote peer's offer
+          if (description.type === 'offer') {
+            await peer.setLocalDescription();
+            sc.emit('signal', { description: peer.localDescription });
+          }
+          // Handle ICE candidate
+        } else if (candidate) {
+          try {
+            await peer.addIceCandidate(candidate);
+          } catch (e) {
+            // Log error unless ignoring offers and candidate is not an empty string
+            if (!isIgnoringOffer.current && candidate.candidate.length > 1) {
+              console.error('Unable to add ICE candidate for peer:', e);
+            }
+          }
+        }
+      }
+    );
 
     setSocket(sc);
 
@@ -63,8 +158,6 @@ const Page = () => {
     };
   }, [roomId]);
 
-  const [myStream, setMyStream] = useState<MediaStream | null>(null);
-
   useEffect(() => {
     (async () => {
       const stream = new MediaStream();
@@ -72,7 +165,8 @@ const Page = () => {
         mediaConstraits
       );
       stream.addTrack(userMedia.getTracks()[0]);
-      setMyStream(stream);
+      myVideoRef.current.srcObject = stream;
+      myStream.current = stream;
     })();
   }, []);
 
@@ -124,7 +218,7 @@ const Page = () => {
             <Card shadow="sm" padding="lg">
               <Card.Section>
                 <video
-                  ref={(v) => { if (v) v.srcObject = myStream }}
+                  ref={myVideoRef}
                   autoPlay
                   muted
                   playsInline
@@ -136,16 +230,29 @@ const Page = () => {
                 You've won a million dollars in cash!
               </Text>
 
-              <Text size="sm">
-                Please click anywhere on this card to claim your reward, this is
-                not a fraud, trust us
+              <Text size="sm" style={{ display: 'flex', alignItems: 'center' }}>
+                {isPolite ? (
+                  <>
+                    <StarFilledIcon />
+                    <div>I am polite</div>
+                  </>
+                ) : (
+                  <>
+                    <StarIcon />
+                    <div>I am impolite</div>
+                  </>
+                )}
               </Text>
             </Card>
           </Grid.Col>
           <Grid.Col span={6}>
             <Card shadow="sm" padding="lg">
               <Card.Section>
-                <video />
+                <video ref={peerVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  style={{ width: '100%' }}/>
               </Card.Section>
 
               <Text weight={500} size="lg">

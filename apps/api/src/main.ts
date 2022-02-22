@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import {
   PEER_CONNECTED_EVENT,
   PEER_DISCONNECTED_EVENT,
+  SIGNAL_EVENT,
 } from '@programming-webrtc/shared';
 
 const app = express();
@@ -52,8 +53,9 @@ namespace.on('connect', (socket) => {
 
   socket.broadcast.emit(PEER_CONNECTED_EVENT);
 
-  socket.on('signal', (data) => {
-    socket.broadcast.emit('signal', data);
+  socket.on(SIGNAL_EVENT, (data) => {
+    console.log('signal_event: ', data);
+    socket.broadcast.emit(SIGNAL_EVENT, data);
   });
 
   socket.on('disconnect', (reason) => {
