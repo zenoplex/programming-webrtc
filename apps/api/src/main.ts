@@ -11,7 +11,7 @@ import {
 const app = express();
 const hostname = 'localhost';
 const appOrigin = process.env.NX_APP_ORIGIN;
-const port = process.env.port || 3333;
+const port = process.env.PORT || 3333;
 
 console.log('appOrigin', appOrigin);
 
