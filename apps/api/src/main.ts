@@ -18,10 +18,6 @@ const turnServerToken = process.env.NX_TURN_SERVER_TOKEN;
 
 console.log('appOrigin', appOrigin);
 
-app.get('/api', (req, res) => {
-  res.send({ message: 'Welcome to api!' });
-});
-
 let server = null;
 
 if (process.env.NX_SSL_KEY_PATH && process.env.NX_SSL_CERT_PATH) {
@@ -67,13 +63,21 @@ namespace.on('connect', async (socket) => {
         Authorization:
           'Basic ' + Buffer.from(turnServerToken).toString('base64'),
       },
+      body: JSON.stringify({ format: 'urls' })
     });
-    const json = (await response.json()) as { s: string; v: string };
+    const json = (await response.json()) as { s: string; v: { iceServers: {
+      username: string,
+      urls: string[],
+      credential: string
+     }} };
     // Send back list of ice servers to sender
-    console.log('emitting turn server info', json);
-    socket.emit('token', json);
+    console.log('emitting TURN server info', json);
+    socket.emit('token', { iceServers: [json.v.iceServers]});
   } else {
-    socket.emit('token', { s: 'ok', v: { iceServers: [{ url: 'stun2.l.google.com:19302'}]}});
+    socket.emit('token', {
+      
+      iceServers: [{ url: 'stun2.l.google.com:19302' }],
+    });
   }
 
   socket.on(SIGNAL_EVENT, (data) => {
@@ -85,4 +89,8 @@ namespace.on('connect', async (socket) => {
     console.log('disconnect:', reason);
     namespace.emit(PEER_DISCONNECTED_EVENT);
   });
+
+  const o = {
+    format: 'urls',
+  };
 });

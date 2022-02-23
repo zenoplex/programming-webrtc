@@ -43,6 +43,7 @@ const Page = () => {
   const [roomId, setRoomId] = useState(randGitBranch());
   const isPolite = useRef(false);
   const isMakingOffer = useRef(false);
+  const isPeerConnected = useRef(false);
   const isIgnoringOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   // const [peer, setPeer] = useState<RTCPeerConnection | null>(null);
@@ -65,7 +66,7 @@ const Page = () => {
     sc.on('token', (token) => {
       console.log('tolen', token);
 
-      const rpc = new RTCPeerConnection(token.v.iceServers);
+      const rpc = new RTCPeerConnection({ iceServers: token.iceServers });
 
       rpc.onnegotiationneeded = async () => {
         isMakingOffer.current = true;
@@ -148,6 +149,7 @@ const Page = () => {
           // Has to respond to remote peer's offer
           if (description.type === 'offer') {
             const answer = await rpc.createAnswer();
+            console.log('answer', answer);
             await rpc.setLocalDescription(answer);
             sc.emit('signal', { description: rpc.localDescription });
           }
