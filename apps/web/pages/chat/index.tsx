@@ -69,15 +69,17 @@ const Page = () => {
 
       rpc.onnegotiationneeded = async () => {
         isMakingOffer.current = true;
-        await rpc.setLocalDescription();
+        const offer = await rpc.createOffer();
+        await rpc.setLocalDescription(offer);
         sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
         isMakingOffer.current = false;
       };
       rpc.onicecandidate = ({ candidate }) => {
-        console.log('Attempting to handle an ICE candidate...');
+        console.log('Attempting to handle an ICE candidate...', candidate);
         sc.emit(SIGNAL_EVENT, { candidate: candidate });
       };
       rpc.ontrack = ({ track, streams }) => {
+        console.log('ontrack', track, streams);
         if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
       };
 
@@ -145,7 +147,8 @@ const Page = () => {
 
           // Has to respond to remote peer's offer
           if (description.type === 'offer') {
-            await rpc.setLocalDescription();
+            const answer = await rpc.createAnswer();
+            await rpc.setLocalDescription(answer);
             sc.emit('signal', { description: rpc.localDescription });
           }
           // Handle ICE candidate
