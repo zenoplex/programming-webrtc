@@ -54,34 +54,42 @@ const Page = () => {
   useEffect(() => {
     const apiOrigin = process.env.NX_API_ORIGIN;
     const sc = io(`${apiOrigin}/${roomId}`, { autoConnect: false });
-    const peer = new RTCPeerConnection({});
 
     sc.on('connect', () => {
       console.log('connect');
       setIsConnected(true);
+    });
 
-      peer.onnegotiationneeded = async () => {
+    // TODO: Need to type socket event
+    // token { s: 'ok', v: { iceServers: string[] } } | { s: 'error', v: string }
+    sc.on('token', (token) => {
+      console.log('tolen', token);
+
+      const rpc = new RTCPeerConnection(token.v.iceServers);
+
+      rpc.onnegotiationneeded = async () => {
         isMakingOffer.current = true;
-        await peer.setLocalDescription();
-        sc.emit(SIGNAL_EVENT, { description: peer.localDescription });
+        await rpc.setLocalDescription();
+        sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
         isMakingOffer.current = false;
       };
-      peer.onicecandidate = ({ candidate }) => {
+      rpc.onicecandidate = ({ candidate }) => {
         console.log('Attempting to handle an ICE candidate...');
         sc.emit(SIGNAL_EVENT, { candidate: candidate });
       };
-      peer.ontrack = ({ track, streams }) => {
+      rpc.ontrack = ({ track, streams }) => {
         if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
-      }
-      
+      };
 
       if (myStream.current) {
         for (const track of myStream.current.getTracks()) {
-          peer.addTrack(track, myStream.current);
+          rpc.addTrack(track, myStream.current);
         }
       }
 
       // peer.ontrack = handleRtcPeerTrack;
+
+      peer.current = rpc;
     });
 
     sc.on('disconnect', (reason) => {
@@ -109,6 +117,9 @@ const Page = () => {
       }) => {
         console.log('SIGNAL_EVENT', { description, candidate });
 
+        if (!peer.current) return;
+        const rpc = peer.current;
+
         // offer/answer
         if (description) {
           // readyForOffer is true
@@ -116,7 +127,7 @@ const Page = () => {
           // 2) RTCSignalingState is stable OR isSettingRemoteAnswerPending is true
           const readyForOffer =
             !isMakingOffer.current &&
-            (peer.signalingState === 'stable' ||
+            (rpc.signalingState === 'stable' ||
               isSettingRemoteAnswerPending.current);
           const offerCollision = description.type === 'offer' && !readyForOffer;
           isIgnoringOffer.current = !isPolite.current && offerCollision;
@@ -129,18 +140,18 @@ const Page = () => {
           // If not ignoring offers then has no choice but to respond
           isSettingRemoteAnswerPending.current = description.type === 'answer';
           console.log('description', description);
-          await peer.setRemoteDescription(description);
+          await rpc.setRemoteDescription(description);
           isSettingRemoteAnswerPending.current = false;
 
           // Has to respond to remote peer's offer
           if (description.type === 'offer') {
-            await peer.setLocalDescription();
-            sc.emit('signal', { description: peer.localDescription });
+            await rpc.setLocalDescription();
+            sc.emit('signal', { description: rpc.localDescription });
           }
           // Handle ICE candidate
         } else if (candidate) {
           try {
-            await peer.addIceCandidate(candidate);
+            await rpc.addIceCandidate(candidate);
           } catch (e) {
             // Log error unless ignoring offers and candidate is not an empty string
             if (!isIgnoringOffer.current && candidate.candidate.length > 1) {
@@ -248,11 +259,13 @@ const Page = () => {
           <Grid.Col span={6}>
             <Card shadow="sm" padding="lg">
               <Card.Section>
-                <video ref={peerVideoRef}
+                <video
+                  ref={peerVideoRef}
                   autoPlay
                   muted
                   playsInline
-                  style={{ width: '100%' }}/>
+                  style={{ width: '100%' }}
+                />
               </Card.Section>
 
               <Text weight={500} size="lg">
