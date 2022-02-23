@@ -71,7 +71,7 @@ const Page = () => {
         sc.emit(SIGNAL_EVENT, { candidate: candidate });
       };
       peer.ontrack = ({ track, streams }) => {
-        peerVideoRef.current.srcObject = streams[0];
+        if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
       }
       
 
@@ -90,12 +90,12 @@ const Page = () => {
     });
 
     sc.on(PEER_CONNECTED_EVENT, (...args) => {
-      console.log('I am polite');
+      console.log('PEER_CONNECTED_EVENT', args);
       isPolite.current = true;
     });
 
     sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
-      console.log(args);
+      console.log('PEER_DISCONNECTED_EVENT', args);
     });
 
     sc.on(
@@ -107,7 +107,7 @@ const Page = () => {
         description?: RTCSessionDescription;
         candidate: RTCIceCandidate;
       }) => {
-        console.log({ description, candidate });
+        console.log('SIGNAL_EVENT', { description, candidate });
 
         // offer/answer
         if (description) {
@@ -165,7 +165,7 @@ const Page = () => {
         mediaConstraits
       );
       stream.addTrack(userMedia.getTracks()[0]);
-      myVideoRef.current.srcObject = stream;
+      if (myVideoRef.current) myVideoRef.current.srcObject = stream;
       myStream.current = stream;
     })();
   }, []);
