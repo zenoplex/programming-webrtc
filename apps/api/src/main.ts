@@ -2,12 +2,11 @@ import * as express from 'express';
 import * as https from 'https';
 import * as fs from 'fs';
 import { Server } from 'socket.io';
+import fetch from 'cross-fetch';
 import {
   PEER_CONNECTED_EVENT,
   PEER_DISCONNECTED_EVENT,
   SIGNAL_EVENT,
-  ICE_SERVERS_RECEIVED_EVENT,
-  getIceServers,
 } from '@programming-webrtc/shared';
 
 const app = express();
@@ -56,11 +55,30 @@ namespace.on('connect', async (socket) => {
   // To set who becomes polite
   socket.broadcast.emit(PEER_CONNECTED_EVENT);
 
-  const iceServers = await getIceServers(
-    turnServerOrigin,
-    turnServerToken && Buffer.from(turnServerToken).toString('base64')
-  );
-  socket.emit(ICE_SERVERS_RECEIVED_EVENT, iceServers);
+  if (turnServerOrigin && turnServerToken) {
+    const response = await fetch(turnServerOrigin, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:
+          'Basic ' + Buffer.from(turnServerToken).toString('base64'),
+      },
+      body: JSON.stringify({ format: 'urls' })
+    });
+    const json = (await response.json()) as { s: string; v: { iceServers: {
+      username: string,
+      urls: string[],
+      credential: string
+     }} };
+    // Send back list of ice servers to sender
+    console.log('emitting TURN server info', json);
+    socket.emit('token', { iceServers: [json.v.iceServers]});
+  } else {
+    socket.emit('token', {
+      
+      iceServers: [{ url: 'stun2.l.google.com:19302' }],
+    });
+  }
 
   socket.on(SIGNAL_EVENT, (data) => {
     console.log('signal_event: ', data);
@@ -71,4 +89,8 @@ namespace.on('connect', async (socket) => {
     console.log('disconnect:', reason);
     namespace.emit(PEER_DISCONNECTED_EVENT);
   });
+
+  const o = {
+    format: 'urls',
+  };
 });

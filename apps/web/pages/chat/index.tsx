@@ -28,7 +28,6 @@ import {
   PEER_CONNECTED_EVENT,
   PEER_DISCONNECTED_EVENT,
   SIGNAL_EVENT,
-  ICE_SERVERS_RECEIVED_EVENT,
 } from '@programming-webrtc/shared';
 
 seed('seed');
@@ -44,6 +43,7 @@ const Page = () => {
   const [roomId, setRoomId] = useState(randGitBranch());
   const isPolite = useRef(false);
   const isMakingOffer = useRef(false);
+  const isPeerConnected = useRef(false);
   const isIgnoringOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   // const [peer, setPeer] = useState<RTCPeerConnection | null>(null);
@@ -62,10 +62,11 @@ const Page = () => {
     });
 
     // TODO: Need to type socket event
-    sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
-      console.log(ICE_SERVERS_RECEIVED_EVENT, iceServers);
+    // token { s: 'ok', v: { iceServers: string[] } } | { s: 'error', v: string }
+    sc.on('token', (token) => {
+      console.log('tolen', token);
 
-      const rpc = new RTCPeerConnection({ iceServers: iceServers });
+      const rpc = new RTCPeerConnection({ iceServers: token.iceServers });
 
       rpc.onnegotiationneeded = async () => {
         isMakingOffer.current = true;
