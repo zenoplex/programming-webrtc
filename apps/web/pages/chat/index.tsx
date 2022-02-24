@@ -106,6 +106,37 @@ const Page = () => {
 
     sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
       console.log('PEER_DISCONNECTED_EVENT', args);
+      if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
+      peer.current?.close();
+      
+      // TODO: DRY code needs to be refactored
+      const rpc = new RTCPeerConnection(peer.current?.getConfiguration());
+
+      rpc.onnegotiationneeded = async () => {
+        isMakingOffer.current = true;
+        const offer = await rpc.createOffer();
+        await rpc.setLocalDescription(offer);
+        sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
+        isMakingOffer.current = false;
+      };
+      rpc.onicecandidate = ({ candidate }) => {
+        console.log('Attempting to handle an ICE candidate...', candidate);
+        sc.emit(SIGNAL_EVENT, { candidate: candidate });
+      };
+      rpc.ontrack = ({ track, streams }) => {
+        console.log('ontrack', track, streams);
+        if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
+      };
+
+      if (myStream.current) {
+        for (const track of myStream.current.getTracks()) {
+          rpc.addTrack(track, myStream.current);
+        }
+      }
+
+      // peer.ontrack = handleRtcPeerTrack;
+
+      peer.current = rpc;
     });
 
     sc.on(
@@ -188,6 +219,9 @@ const Page = () => {
   const onJoinClick = useCallback(() => {
     if (isConnected) {
       socket?.close();
+      if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
+      peer.current?.close();
+      peer.current = null;
     } else {
       socket?.open();
     }
