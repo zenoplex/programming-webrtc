@@ -30,6 +30,7 @@ import {
   SIGNAL_EVENT,
   ICE_SERVERS_RECEIVED_EVENT,
 } from '@programming-webrtc/shared';
+import Video from '../../components/Video';
 
 seed('seed');
 
@@ -82,13 +83,12 @@ const Page = () => {
     };
 
     const addStreamingMedia = (peer: RTCPeerConnection) => {
-      if (myStream.current)  {
+      if (myStream.current) {
         for (const track of myStream.current.getTracks()) {
           peer.addTrack(track, myStream.current);
         }
       }
-    }
-    
+    };
 
     // TODO: Need to type socket event
     sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
@@ -257,7 +257,7 @@ const Page = () => {
           <Grid.Col span={6}>
             <Card shadow="sm" padding="lg">
               <Card.Section>
-                <video
+                <Video
                   ref={myVideoRef}
                   autoPlay
                   muted
@@ -288,7 +288,7 @@ const Page = () => {
           <Grid.Col span={6}>
             <Card shadow="sm" padding="lg">
               <Card.Section>
-                <video
+                <Video
                   ref={peerVideoRef}
                   autoPlay
                   muted
