@@ -55,39 +55,50 @@ const Page = () => {
   useEffect(() => {
     const apiOrigin = process.env.NX_API_ORIGIN;
     const sc = io(`${apiOrigin}/${roomId}`, { autoConnect: false });
-
     sc.on('connect', () => {
       console.log('connect');
       setIsConnected(true);
     });
+
+    const onNegotiationNeeded = async () => {
+      if (!peer.current) return;
+
+      const rpc = peer.current;
+      isMakingOffer.current = true;
+      const offer = await rpc.createOffer();
+      await rpc.setLocalDescription(offer);
+      sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
+      isMakingOffer.current = false;
+    };
+
+    const onIceCandidate = (e: RTCPeerConnectionIceEvent) => {
+      console.log('Attempting to handle an ICE candidate...', e.candidate);
+      sc.emit(SIGNAL_EVENT, { candidate: e.candidate });
+    };
+
+    const onTrack = (e: RTCTrackEvent) => {
+      console.log('ontrack', e);
+      if (peerVideoRef.current) peerVideoRef.current.srcObject = e.streams[0];
+    };
+
+    const addStreamingMedia = (peer: RTCPeerConnection) => {
+      if (myStream.current)  {
+        for (const track of myStream.current.getTracks()) {
+          peer.addTrack(track, myStream.current);
+        }
+      }
+    }
+    
 
     // TODO: Need to type socket event
     sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
       console.log(ICE_SERVERS_RECEIVED_EVENT, iceServers);
 
       const rpc = new RTCPeerConnection({ iceServers: iceServers });
-
-      rpc.onnegotiationneeded = async () => {
-        isMakingOffer.current = true;
-        const offer = await rpc.createOffer();
-        await rpc.setLocalDescription(offer);
-        sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
-        isMakingOffer.current = false;
-      };
-      rpc.onicecandidate = ({ candidate }) => {
-        console.log('Attempting to handle an ICE candidate...', candidate);
-        sc.emit(SIGNAL_EVENT, { candidate: candidate });
-      };
-      rpc.ontrack = ({ track, streams }) => {
-        console.log('ontrack', track, streams);
-        if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
-      };
-
-      if (myStream.current) {
-        for (const track of myStream.current.getTracks()) {
-          rpc.addTrack(track, myStream.current);
-        }
-      }
+      rpc.onnegotiationneeded = onNegotiationNeeded;
+      rpc.onicecandidate = onIceCandidate;
+      rpc.ontrack = onTrack;
+      addStreamingMedia(rpc);
 
       // peer.ontrack = handleRtcPeerTrack;
 
@@ -108,33 +119,13 @@ const Page = () => {
       console.log('PEER_DISCONNECTED_EVENT', args);
       if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
       peer.current?.close();
-      
-      // TODO: DRY code needs to be refactored
+
+      // TODO: should request new ice servers
       const rpc = new RTCPeerConnection(peer.current?.getConfiguration());
-
-      rpc.onnegotiationneeded = async () => {
-        isMakingOffer.current = true;
-        const offer = await rpc.createOffer();
-        await rpc.setLocalDescription(offer);
-        sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
-        isMakingOffer.current = false;
-      };
-      rpc.onicecandidate = ({ candidate }) => {
-        console.log('Attempting to handle an ICE candidate...', candidate);
-        sc.emit(SIGNAL_EVENT, { candidate: candidate });
-      };
-      rpc.ontrack = ({ track, streams }) => {
-        console.log('ontrack', track, streams);
-        if (peerVideoRef.current) peerVideoRef.current.srcObject = streams[0];
-      };
-
-      if (myStream.current) {
-        for (const track of myStream.current.getTracks()) {
-          rpc.addTrack(track, myStream.current);
-        }
-      }
-
-      // peer.ontrack = handleRtcPeerTrack;
+      rpc.onnegotiationneeded = onNegotiationNeeded;
+      rpc.onicecandidate = onIceCandidate;
+      rpc.ontrack = onTrack;
+      addStreamingMedia(rpc);
 
       peer.current = rpc;
     });
