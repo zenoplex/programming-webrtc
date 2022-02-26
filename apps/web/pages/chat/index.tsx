@@ -31,6 +31,8 @@ import {
   ICE_SERVERS_RECEIVED_EVENT,
 } from '@programming-webrtc/shared';
 import Video from '../../components/Video';
+// Firefox does not support onconnectionstatechange
+import 'webrtc-adapter';
 
 seed('seed');
 
@@ -82,6 +84,10 @@ const Page = () => {
       if (peerVideoRef.current) peerVideoRef.current.srcObject = e.streams[0];
     };
 
+    const onConnectionStateChange = (e: Event) => {
+      console.log('onConnectionStateChange', peer.current?.connectionState);
+    }
+
     const addStreamingMedia = (peer: RTCPeerConnection) => {
       if (myStream.current) {
         for (const track of myStream.current.getTracks()) {
@@ -98,6 +104,7 @@ const Page = () => {
       rpc.onnegotiationneeded = onNegotiationNeeded;
       rpc.onicecandidate = onIceCandidate;
       rpc.ontrack = onTrack;
+      rpc.onconnectionstatechange = onConnectionStateChange;
       addStreamingMedia(rpc);
 
       // peer.ontrack = handleRtcPeerTrack;
@@ -118,13 +125,14 @@ const Page = () => {
     sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
       console.log('PEER_DISCONNECTED_EVENT', args);
       if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
-      peer.current?.close();
+      peer.current?.close();      
 
       // TODO: should request new ice servers
       const rpc = new RTCPeerConnection(peer.current?.getConfiguration());
       rpc.onnegotiationneeded = onNegotiationNeeded;
       rpc.onicecandidate = onIceCandidate;
       rpc.ontrack = onTrack;
+      rpc.onconnectionstatechange = onConnectionStateChange;
       addStreamingMedia(rpc);
 
       peer.current = rpc;
