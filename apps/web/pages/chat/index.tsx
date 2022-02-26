@@ -13,6 +13,7 @@ import {
   ThemeIcon,
   Avatar,
   UnstyledButton,
+  createStyles,
 } from '@mantine/core';
 import { io, Socket } from 'socket.io-client';
 import {
@@ -41,15 +42,19 @@ const mediaConstraits = {
   audio: false,
 };
 
+const streamFilters = [undefined, 'grayscale' , 'sepia' , 'noir' , 'psychedelic'] as const
+
 const Page = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState | undefined>();
   const [roomId, setRoomId] = useState(randGitBranch());
+  const [myStreamFilter, setMyStreamFilter] = useState<typeof streamFilters[number]>();
+  const [peerStreamFilter, setPeerStreamFilter] = useState<typeof streamFilters[number]>();
   const isPolite = useRef(false);
   const isMakingOffer = useRef(false);
   const isIgnoringOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
-  // const [peer, setPeer] = useState<RTCPeerConnection | null>(null);
   const peer = useRef<RTCPeerConnection | null>(null);
   const myStream = useRef<MediaStream | null>(null);
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -60,11 +65,12 @@ const Page = () => {
     const sc = io(`${apiOrigin}/${roomId}`, { autoConnect: false });
     sc.on('connect', () => {
       console.log('connect');
-      setIsConnected(true);
+      setIsSocketConnected(true);
     });
 
     const onNegotiationNeeded = async () => {
       if (!peer.current) return;
+      console.log('onNegotiationNeeded');
 
       const rpc = peer.current;
       isMakingOffer.current = true;
@@ -75,7 +81,7 @@ const Page = () => {
     };
 
     const onIceCandidate = (e: RTCPeerConnectionIceEvent) => {
-      console.log('Attempting to handle an ICE candidate...', e.candidate);
+      console.log('onIceCandidate');
       sc.emit(SIGNAL_EVENT, { candidate: e.candidate });
     };
 
@@ -85,7 +91,20 @@ const Page = () => {
     };
 
     const onConnectionStateChange = (e: Event) => {
-      console.log('onConnectionStateChange', peer.current?.connectionState);
+      if (!peer.current) return;
+
+      const rpc = peer.current;
+      console.info('onConnectionStateChange', rpc.connectionState);
+      setPeerConnectionState(rpc.connectionState);
+    }
+
+    const onDataChannel = (e: RTCDataChannelEvent) => {
+      console.log('onDataChannel', e);
+      const label = e.channel.label;
+      if (label.startsWith('FILTER-')){
+        const filter = label.replace('FILTER-','');
+        setPeerStreamFilter(filter as typeof streamFilters[number]);
+      }
     }
 
     const addStreamingMedia = (peer: RTCPeerConnection) => {
@@ -101,20 +120,20 @@ const Page = () => {
       console.log(ICE_SERVERS_RECEIVED_EVENT, iceServers);
 
       const rpc = new RTCPeerConnection({ iceServers: iceServers });
+      setPeerConnectionState(rpc.connectionState);
       rpc.onnegotiationneeded = onNegotiationNeeded;
       rpc.onicecandidate = onIceCandidate;
       rpc.ontrack = onTrack;
       rpc.onconnectionstatechange = onConnectionStateChange;
+      rpc.ondatachannel = onDataChannel;
       addStreamingMedia(rpc);
-
-      // peer.ontrack = handleRtcPeerTrack;
 
       peer.current = rpc;
     });
 
     sc.on('disconnect', (reason) => {
       console.log('disconnected:', reason);
-      setIsConnected(false);
+      setIsSocketConnected(false);
     });
 
     sc.on(PEER_CONNECTED_EVENT, (...args) => {
@@ -133,6 +152,7 @@ const Page = () => {
       rpc.onicecandidate = onIceCandidate;
       rpc.ontrack = onTrack;
       rpc.onconnectionstatechange = onConnectionStateChange;
+      rpc.ondatachannel = onDataChannel;
       addStreamingMedia(rpc);
 
       peer.current = rpc;
@@ -216,7 +236,7 @@ const Page = () => {
   }, []);
 
   const onJoinClick = useCallback(() => {
-    if (isConnected) {
+    if (isSocketConnected) {
       socket?.close();
       if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
       peer.current?.close();
@@ -224,7 +244,21 @@ const Page = () => {
     } else {
       socket?.open();
     }
-  }, [isConnected, socket]);
+  }, [isSocketConnected, socket]);
+
+  const onMyVideoClick = useCallback(() => {
+    if (myVideoRef.current && peer.current && peerConnectionState === 'connected') {
+      const currentFilterIndex = streamFilters.indexOf(myStreamFilter);
+      const nextFilter = streamFilters[(currentFilterIndex + 1) % streamFilters.length];
+      setMyStreamFilter(nextFilter);
+
+      const label = `FILTER-${nextFilter}`;
+      const dataChannel = peer.current.createDataChannel(label)
+      dataChannel.onclose = () => {
+        console.log(`Remote peer has closed the ${label} data channel`);
+      };
+    }
+  }, [myStreamFilter, peerConnectionState]);
 
   const onGenerateRoomIdClick = useCallback(() => {
     setRoomId(randGitBranch());
@@ -255,7 +289,7 @@ const Page = () => {
               />
 
               <Button onClick={onJoinClick}>
-                {!isConnected ? 'Join' : 'Leave'}
+                {!isSocketConnected ? 'Join' : 'Leave'}
               </Button>
             </Group>
           </Grid.Col>
@@ -270,7 +304,9 @@ const Page = () => {
                   autoPlay
                   muted
                   playsInline
-                  style={{ width: '100%' }}
+                  filter={myStreamFilter}
+                  style={{ width: '100%', cursor: peerConnectionState === 'connected' ? 'pointer' : 'auto' }}
+                  onClick={onMyVideoClick}
                 />
               </Card.Section>
 
@@ -302,6 +338,7 @@ const Page = () => {
                   muted
                   playsInline
                   style={{ width: '100%' }}
+                  filter={peerStreamFilter}
                 />
               </Card.Section>
 

@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef } from 'react';
 import { createStyles, MantineTheme } from '@mantine/core';
 
 const useStyles = createStyles((theme: MantineTheme) => ({
@@ -22,24 +22,17 @@ interface Props
     HTMLVideoElement
   > {
   className?: string;
+  filter?: 'grayscale' | 'sepia' | 'noir' | 'psychedelic';
 }
 
-const filters = ['grayscale', 'sepia', 'noir', 'psychedelic'] as const;
-
 const Video = forwardRef<HTMLVideoElement, Props>(
-  ({ className, ...props }, ref) => {
+  ({ className, filter, ...props }, ref) => {
     const { classes, cx } = useStyles();
-
-    const [filterIndex, setFilterIndex] = useState(0);
-    const onClick = (e: React.MouseEvent<HTMLVideoElement>) => {
-      setFilterIndex(s => (s + 1) % filters.length);
-    }
 
     return (
       <video
         ref={ref}
-        className={cx(classes[filters[filterIndex]], className)}
-        onClick={onClick}
+        className={cx(filter && classes[filter], className)}
         {...props}
       />
     );
