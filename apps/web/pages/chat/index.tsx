@@ -105,6 +105,10 @@ const Page = () => {
         const filter = label.replace('FILTER-','');
         setPeerStreamFilter(filter as typeof streamFilters[number]);
       }
+
+      e.channel.onopen = () => {
+        e.channel.close();
+      }
     }
 
     const addStreamingMedia = (peer: RTCPeerConnection) => {
