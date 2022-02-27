@@ -15,6 +15,7 @@ import {
   UnstyledButton,
   createStyles,
 } from '@mantine/core';
+import { useForm } from '@mantine/hooks';
 import { io, Socket } from 'socket.io-client';
 import {
   HomeIcon,
@@ -42,15 +43,25 @@ const mediaConstraits = {
   audio: false,
 };
 
-const streamFilters = [undefined, 'grayscale' , 'sepia' , 'noir' , 'psychedelic'] as const
+const streamFilters = [
+  undefined,
+  'grayscale',
+  'sepia',
+  'noir',
+  'psychedelic',
+] as const;
 
 const Page = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
-  const [peerConnectionState, setPeerConnectionState] = useState<RTCPeerConnectionState | undefined>();
+  const [peerConnectionState, setPeerConnectionState] = useState<
+    RTCPeerConnectionState | undefined
+  >();
   const [roomId, setRoomId] = useState(randGitBranch());
-  const [myStreamFilter, setMyStreamFilter] = useState<typeof streamFilters[number]>();
-  const [peerStreamFilter, setPeerStreamFilter] = useState<typeof streamFilters[number]>();
+  const [myStreamFilter, setMyStreamFilter] =
+    useState<typeof streamFilters[number]>();
+  const [peerStreamFilter, setPeerStreamFilter] =
+    useState<typeof streamFilters[number]>();
   const isPolite = useRef(false);
   const isMakingOffer = useRef(false);
   const isIgnoringOffer = useRef(false);
@@ -59,6 +70,20 @@ const Page = () => {
   const myStream = useRef<MediaStream | null>(null);
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [messages, setMessages] = useState<
+    { sender: string; message: string }[]
+  >([]);
+
+  const form = useForm({
+    initialValues: { message: '' },
+  });
+  const onSubmit = useCallback(
+    async (values) => {
+      setMessages((s) => [...s, { sender: 'me', message: values.message }]);
+      form.setFieldValue('message', '');
+    },
+    [form]
+  );
 
   useEffect(() => {
     const apiOrigin = process.env.NX_API_ORIGIN;
@@ -96,20 +121,20 @@ const Page = () => {
       const rpc = peer.current;
       console.info('onConnectionStateChange', rpc.connectionState);
       setPeerConnectionState(rpc.connectionState);
-    }
+    };
 
     const onDataChannel = (e: RTCDataChannelEvent) => {
       console.log('onDataChannel', e);
       const label = e.channel.label;
-      if (label.startsWith('FILTER-')){
-        const filter = label.replace('FILTER-','');
+      if (label.startsWith('FILTER-')) {
+        const filter = label.replace('FILTER-', '');
         setPeerStreamFilter(filter as typeof streamFilters[number]);
       }
 
       e.channel.onopen = () => {
         e.channel.close();
-      }
-    }
+      };
+    };
 
     const addStreamingMedia = (peer: RTCPeerConnection) => {
       if (myStream.current) {
@@ -148,7 +173,7 @@ const Page = () => {
     sc.on(PEER_DISCONNECTED_EVENT, (...args) => {
       console.log('PEER_DISCONNECTED_EVENT', args);
       if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
-      peer.current?.close();      
+      peer.current?.close();
 
       // TODO: should request new ice servers
       const rpc = new RTCPeerConnection(peer.current?.getConfiguration());
@@ -251,13 +276,18 @@ const Page = () => {
   }, [isSocketConnected, socket]);
 
   const onMyVideoClick = useCallback(() => {
-    if (myVideoRef.current && peer.current && peerConnectionState === 'connected') {
+    if (
+      myVideoRef.current &&
+      peer.current &&
+      peerConnectionState === 'connected'
+    ) {
       const currentFilterIndex = streamFilters.indexOf(myStreamFilter);
-      const nextFilter = streamFilters[(currentFilterIndex + 1) % streamFilters.length];
+      const nextFilter =
+        streamFilters[(currentFilterIndex + 1) % streamFilters.length];
       setMyStreamFilter(nextFilter);
 
       const label = `FILTER-${nextFilter}`;
-      const dataChannel = peer.current.createDataChannel(label)
+      const dataChannel = peer.current.createDataChannel(label);
       dataChannel.onclose = () => {
         console.log(`Remote peer has closed the ${label} data channel`);
       };
@@ -309,13 +339,17 @@ const Page = () => {
                   muted
                   playsInline
                   filter={myStreamFilter}
-                  style={{ width: '100%', cursor: peerConnectionState === 'connected' ? 'pointer' : 'auto' }}
+                  style={{
+                    width: '100%',
+                    cursor:
+                      peerConnectionState === 'connected' ? 'pointer' : 'auto',
+                  }}
                   onClick={onMyVideoClick}
                 />
               </Card.Section>
 
               <Text weight={500} size="lg">
-                You've won a million dollars in cash!
+                My Stream
               </Text>
 
               <Text size="sm" style={{ display: 'flex', alignItems: 'center' }}>
@@ -347,12 +381,7 @@ const Page = () => {
               </Card.Section>
 
               <Text weight={500} size="lg">
-                You've won a million dollars in cash!
-              </Text>
-
-              <Text size="sm">
-                Please click anywhere on this card to claim your reward, this is
-                not a fraud, trust us
+                Peer stream
               </Text>
             </Card>
           </Grid.Col>
@@ -362,37 +391,34 @@ const Page = () => {
         <div style={{ height: '100%' }}>
           <Grid grow>
             <Grid.Col span={12}>
-              <List
-                spacing="xs"
-                size="sm"
-                center
-                icon={
-                  <ThemeIcon color="teal" size={24} radius="xl">
-                    <Avatar color="cyan" radius="xl" size={24}>
-                      MK
-                    </Avatar>
-                  </ThemeIcon>
-                }
-              >
-                <List.Item>Clone or download repository from GitHub</List.Item>
-                <List.Item>Install dependencies with yarn</List.Item>
-                <List.Item>
-                  To start development server run npm start command
-                </List.Item>
-                <List.Item>
-                  Run tests to make sure your changes do not break the build
-                </List.Item>
-                <List.Item>Submit a pull request once you are done</List.Item>
+              <List spacing="xs" size="sm" center>
+                {messages.map(({ sender, message }, index) => (
+                  <List.Item
+                    icon={
+                      <ThemeIcon color="teal" size={24} radius="xl">
+                        <Avatar color="cyan" radius="xl" size={24}>
+                          {sender}
+                        </Avatar>
+                      </ThemeIcon>
+                    }
+                    key={index}
+                  >
+                    {message}
+                  </List.Item>
+                ))}
               </List>
             </Grid.Col>
             <Grid.Col>
-              <Group>
-                <TextInput
-                  icon={<ChatBubbleIcon />}
-                  placeholder="Enter message"
-                ></TextInput>
-                <Button>Send</Button>
-              </Group>
+              <form onSubmit={form.onSubmit(onSubmit)}>
+                <Group>
+                  <TextInput
+                    icon={<ChatBubbleIcon />}
+                    placeholder="Enter message"
+                    {...form.getInputProps('message')}
+                  ></TextInput>
+                  <Button type="submit">Send</Button>
+                </Group>
+              </form>
             </Grid.Col>
           </Grid>
         </div>

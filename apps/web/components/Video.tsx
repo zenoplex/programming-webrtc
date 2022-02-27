@@ -13,7 +13,7 @@ const useStyles = createStyles((theme: MantineTheme) => ({
   },
   psychedelic: {
     filter: 'hue-rotate(180deg) saturate(400%) contrast(200%)',
-  }
+  },
 }));
 
 interface Props
