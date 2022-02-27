@@ -67,6 +67,7 @@ const Page = () => {
   const isIgnoringOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
   const peer = useRef<RTCPeerConnection | null>(null);
+  const peerChatChannel = useRef<RTCDataChannel | null>(null);
   const myStream = useRef<MediaStream | null>(null);
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -80,6 +81,8 @@ const Page = () => {
   const onSubmit = useCallback(
     async (values) => {
       setMessages((s) => [...s, { sender: 'me', message: values.message }]);
+      // TODO: fix page style to cap height and add scrollTo
+      peerChatChannel.current?.send(values.message);
       form.setFieldValue('message', '');
     },
     [form]
@@ -144,6 +147,20 @@ const Page = () => {
       }
     };
 
+    const addChatChannel = (peer: RTCPeerConnection) => {
+      const chatChannel = peer.createDataChannel('CHAT', { negotiated: true, id: 51});
+      chatChannel.onopen = () => {
+        chatChannel.send('Hi!');
+      }
+      chatChannel.onmessage = (e: MessageEvent<string>) => {
+        setMessages(s => [...s, { sender: 'peer', message: e.data }]);
+      }
+      chatChannel.onclose = () => {
+        console.log('Chat channel closed.');
+      }
+      peerChatChannel.current = chatChannel;
+    }
+
     // TODO: Need to type socket event
     sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
       console.log(ICE_SERVERS_RECEIVED_EVENT, iceServers);
@@ -156,6 +173,7 @@ const Page = () => {
       rpc.onconnectionstatechange = onConnectionStateChange;
       rpc.ondatachannel = onDataChannel;
       addStreamingMedia(rpc);
+      addChatChannel(rpc);
 
       peer.current = rpc;
     });
@@ -183,6 +201,7 @@ const Page = () => {
       rpc.onconnectionstatechange = onConnectionStateChange;
       rpc.ondatachannel = onDataChannel;
       addStreamingMedia(rpc);
+      addChatChannel(rpc);
 
       peer.current = rpc;
     });
@@ -395,8 +414,8 @@ const Page = () => {
                 {messages.map(({ sender, message }, index) => (
                   <List.Item
                     icon={
-                      <ThemeIcon color="teal" size={24} radius="xl">
-                        <Avatar color="cyan" radius="xl" size={24}>
+                      <ThemeIcon  size={24} radius="xl">
+                        <Avatar color={sender === 'me' ? "red" : "cyan"} radius="xl" size={24}>
                           {sender}
                         </Avatar>
                       </ThemeIcon>
@@ -416,7 +435,7 @@ const Page = () => {
                     placeholder="Enter message"
                     {...form.getInputProps('message')}
                   ></TextInput>
-                  <Button type="submit">Send</Button>
+                  <Button type="submit" disabled={form.values.message.length < 1}>Send</Button>
                 </Group>
               </form>
             </Grid.Col>
