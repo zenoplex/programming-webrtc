@@ -283,6 +283,7 @@ const Page = () => {
 
         // offer/answer
         if (description) {
+          // @ts-expect-error patch for older browser
           if (description.type === '_reset') {
             resetAndRetryConnection(rpc);
             return;
