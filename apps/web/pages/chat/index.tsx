@@ -68,6 +68,7 @@ const Page = () => {
   const isMakingOffer = useRef(false);
   const isIgnoringOffer = useRef(false);
   const isSettingRemoteAnswerPending = useRef(false);
+  const isSuppressingInitialOffer = useRef(false);
   const peer = useRef<RTCPeerConnection | null>(null);
   const peerChatChannel = useRef<RTCDataChannel | null>(null);
   const myStream = useRef<MediaStream | null>(null);
@@ -114,14 +115,22 @@ const Page = () => {
 
     const onNegotiationNeeded = async () => {
       if (!peer.current) return;
+      const rpc = peer.current;
+      if (isSuppressingInitialOffer.current) return;
+
       console.log('onNegotiationNeeded');
 
-      const rpc = peer.current;
-      isMakingOffer.current = true;
-      const offer = await rpc.createOffer();
-      await rpc.setLocalDescription(offer);
-      sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
-      isMakingOffer.current = false;
+      try {
+        isMakingOffer.current = true;
+        await rpc.setLocalDescription();
+      } catch (err) {
+        // Create SDP offer required by older browsers
+        const offer = await rpc.createOffer();
+        await rpc.setLocalDescription(offer);
+      } finally {
+        sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
+        isMakingOffer.current = false;
+      }
     };
 
     const onIceCandidate = (e: RTCPeerConnectionIceEvent) => {
@@ -186,6 +195,33 @@ const Page = () => {
       peerChatChannel.current = chatChannel;
     };
 
+    const resetAndRetryConnection = (rpc: RTCPeerConnection) => {
+      isMakingOffer.current = false;
+      isIgnoringOffer.current = false;
+      isSettingRemoteAnswerPending.current = false;
+      isSuppressingInitialOffer.current = isPolite.current;
+
+      if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
+      const config = rpc.getConfiguration();
+      rpc.close();
+
+      // TODO: get ICE servers from the server
+      const newRpc = new RTCPeerConnection(config);
+      newRpc.onnegotiationneeded = onNegotiationNeeded;
+      newRpc.onicecandidate = onIceCandidate;
+      newRpc.ontrack = onTrack;
+      newRpc.onconnectionstatechange = onConnectionStateChange;
+      newRpc.ondatachannel = onDataChannel;
+      addStreamingMedia(newRpc);
+      addChatChannel(newRpc);
+
+      peer.current = newRpc;
+
+      if (isPolite.current) {
+        sc.emit(SIGNAL_EVENT, { descrition: { type: '_reset' } });
+      }
+    };
+
     // TODO: Need to type socket event
     sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
       console.log(ICE_SERVERS_RECEIVED_EVENT, iceServers);
@@ -247,6 +283,11 @@ const Page = () => {
 
         // offer/answer
         if (description) {
+          if (description.type === '_reset') {
+            resetAndRetryConnection(rpc);
+            return;
+          }
+
           // readyForOffer is true
           // 1) when not in middle of making an offer
           // 2) RTCSignalingState is stable OR isSettingRemoteAnswerPending is true
@@ -264,20 +305,36 @@ const Page = () => {
 
           // If not ignoring offers then has no choice but to respond
           isSettingRemoteAnswerPending.current = description.type === 'answer';
-          console.log('description', description);
-          await rpc.setRemoteDescription(description);
+          try {
+            console.log('description', description);
+            console.log('SingnalingState', rpc.signalingState);
+            await rpc.setRemoteDescription(description);
+          } catch (err) {
+            // Safari will not accpet { type: 'rollback' } thus needs to reset
+            // Maybe will be fixed on Safari 15.4
+            // https://bugs.webkit.org/show_bug.cgi?id=174656
+            resetAndRetryConnection(rpc);
+            return;
+          }
           isSettingRemoteAnswerPending.current = false;
 
           // Has to respond to remote peer's offer
           if (description.type === 'offer') {
-            const answer = await rpc.createAnswer();
-            console.log('answer', answer);
-            await rpc.setLocalDescription(answer);
-            sc.emit('signal', { description: rpc.localDescription });
+            try {
+              await rpc.setLocalDescription();
+            } catch (err) {
+              // Create SDP answer required by older browsers
+              const answer = await rpc.createAnswer();
+              await rpc.setLocalDescription(answer);
+            } finally {
+              sc.emit(SIGNAL_EVENT, { description: rpc.localDescription });
+              isSuppressingInitialOffer.current = false;
+            }
           }
           // Handle ICE candidate
         } else if (candidate) {
           try {
+            console.log(rpc.signalingState);
             await rpc.addIceCandidate(candidate);
           } catch (e) {
             // Log error unless ignoring offers and candidate is not an empty string
