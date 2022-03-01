@@ -1,19 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Grid,
-  Container,
   Card,
   Text,
   TextInput,
   Tooltip,
   Group,
   Button,
-  Textarea,
   List,
   ThemeIcon,
   Avatar,
   UnstyledButton,
-  createStyles,
 } from '@mantine/core';
 import { useForm } from '@mantine/hooks';
 import { io, Socket } from 'socket.io-client';
@@ -51,6 +48,11 @@ const streamFilters = [
   'psychedelic',
 ] as const;
 
+interface Message {
+  sender: string;
+  message: string;
+}
+
 const Page = () => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
@@ -71,9 +73,8 @@ const Page = () => {
   const myStream = useRef<MediaStream | null>(null);
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [messages, setMessages] = useState<
-    { sender: string; message: string }[]
-  >([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const messageQueue = useRef<string[]>([]);
 
   const form = useForm({
     initialValues: { message: '' },
@@ -82,7 +83,22 @@ const Page = () => {
     async (values) => {
       setMessages((s) => [...s, { sender: 'me', message: values.message }]);
       // TODO: fix page style to cap height and add scrollTo
-      peerChatChannel.current?.send(values.message);
+      if (
+        peerChatChannel.current &&
+        peerChatChannel.current.readyState === 'open'
+      ) {
+        const chatChannel = peerChatChannel.current;
+
+        try {
+          chatChannel.send(values.message);
+        } catch (err) {
+          console.error('Failed to send message', err);
+          messageQueue.current.push(values.message);
+        }
+      } else {
+        messageQueue.current.push(values.message);
+      }
+
       form.setFieldValue('message', '');
     },
     [form]
@@ -148,18 +164,27 @@ const Page = () => {
     };
 
     const addChatChannel = (peer: RTCPeerConnection) => {
-      const chatChannel = peer.createDataChannel('CHAT', { negotiated: true, id: 51});
+      const chatChannel = peer.createDataChannel('CHAT', {
+        negotiated: true,
+        id: 51,
+      });
       chatChannel.onopen = () => {
         chatChannel.send('Hi!');
-      }
+
+        // Send queued messages and clear the queue
+        messageQueue.current.forEach((message) => {
+          chatChannel.send(message);
+        });
+        messageQueue.current = [];
+      };
       chatChannel.onmessage = (e: MessageEvent<string>) => {
-        setMessages(s => [...s, { sender: 'peer', message: e.data }]);
-      }
+        setMessages((s) => [...s, { sender: 'peer', message: e.data }]);
+      };
       chatChannel.onclose = () => {
         console.log('Chat channel closed.');
-      }
+      };
       peerChatChannel.current = chatChannel;
-    }
+    };
 
     // TODO: Need to type socket event
     sc.on(ICE_SERVERS_RECEIVED_EVENT, (iceServers) => {
@@ -414,8 +439,12 @@ const Page = () => {
                 {messages.map(({ sender, message }, index) => (
                   <List.Item
                     icon={
-                      <ThemeIcon  size={24} radius="xl">
-                        <Avatar color={sender === 'me' ? "red" : "cyan"} radius="xl" size={24}>
+                      <ThemeIcon size={24} radius="xl">
+                        <Avatar
+                          color={sender === 'me' ? 'red' : 'cyan'}
+                          radius="xl"
+                          size={24}
+                        >
                           {sender}
                         </Avatar>
                       </ThemeIcon>
@@ -435,7 +464,12 @@ const Page = () => {
                     placeholder="Enter message"
                     {...form.getInputProps('message')}
                   ></TextInput>
-                  <Button type="submit" disabled={form.values.message.length < 1}>Send</Button>
+                  <Button
+                    type="submit"
+                    disabled={form.values.message.length < 1}
+                  >
+                    Send
+                  </Button>
                 </Group>
               </form>
             </Grid.Col>
