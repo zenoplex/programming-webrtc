@@ -50,7 +50,14 @@ const streamFilters = [
 
 interface Message {
   sender: string;
-  message: string;
+  text: string;
+  timestamp: number;
+  hasBeenReadByPeer: boolean;
+}
+
+interface MessageResponse {
+  id: number;
+  timestamp: number;
 }
 
 const Page = () => {
@@ -75,14 +82,20 @@ const Page = () => {
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerVideoRef = useRef<HTMLVideoElement | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const messageQueue = useRef<string[]>([]);
+  const messageQueue = useRef<(Message | MessageResponse)[]>([]);
 
   const form = useForm({
-    initialValues: { message: '' },
+    initialValues: { text: '' },
   });
   const onSubmit = useCallback(
-    async (values) => {
-      setMessages((s) => [...s, { sender: 'me', message: values.message }]);
+    async (values: { text: string }) => {
+      const message = {
+        sender: 'me',
+        text: values.text,
+        timestamp: Date.now(),
+        hasBeenReadByPeer: false,
+      };
+      setMessages((s) => [...s, message]);
       // TODO: fix page style to cap height and add scrollTo
       if (
         peerChatChannel.current &&
@@ -91,16 +104,16 @@ const Page = () => {
         const chatChannel = peerChatChannel.current;
 
         try {
-          chatChannel.send(values.message);
+          chatChannel.send(JSON.stringify(message));
         } catch (err) {
           console.error('Failed to send message', err);
-          messageQueue.current.push(values.message);
+          messageQueue.current.push(message);
         }
       } else {
-        messageQueue.current.push(values.message);
+        messageQueue.current.push(message);
       }
 
-      form.setFieldValue('message', '');
+      form.setFieldValue('text', '');
     },
     [form]
   );
@@ -180,16 +193,50 @@ const Page = () => {
 
       chatChannel.onopen = () => {
         console.log('Chat channel open.');
-        chatChannel.send('Hi!');
+        chatChannel.send(
+          JSON.stringify({ sender: 'me', text: 'Hi', timestamp: Date.now() })
+        );
 
         // Send queued messages and clear the queue
         messageQueue.current.forEach((message) => {
-          chatChannel.send(message);
+          chatChannel.send(JSON.stringify(message));
         });
         messageQueue.current = [];
       };
       chatChannel.onmessage = (e: MessageEvent<string>) => {
-        setMessages((s) => [...s, { sender: 'peer', message: e.data }]);
+        const message = JSON.parse(e.data) as (Message | MessageResponse);
+
+        if (!('id' in message)) {
+          setMessages((s) => [
+            ...s,
+            {
+              sender: 'peer',
+              text: message.text,
+              timestamp: message.timestamp,
+              hasBeenReadByPeer: false
+            },
+          ]);
+
+          // Create and send message response
+          const response: MessageResponse = {
+            id: message.timestamp,
+            timestamp: Date.now(),
+          }
+
+          try { 
+          chatChannel.send(JSON.stringify(response));
+        } catch (err) {
+          messageQueue.current.push(response);
+        }
+          
+        } else {
+          setMessages(s => s.map(item => {
+            if (item.timestamp === message.id) {
+              item.hasBeenReadByPeer = true;
+            }
+            return item;
+          }));
+        }
       };
       chatChannel.onclose = (e: Event) => {
         console.log('Chat channel closed.', e);
@@ -498,7 +545,7 @@ const Page = () => {
           <Grid grow>
             <Grid.Col span={12}>
               <List spacing="xs" size="sm" center>
-                {messages.map(({ sender, message }, index) => (
+                {messages.map(({ sender, text, hasBeenReadByPeer }, index) => (
                   <List.Item
                     icon={
                       <ThemeIcon size={24} radius="xl">
@@ -513,7 +560,8 @@ const Page = () => {
                     }
                     key={index}
                   >
-                    {message}
+                    {sender === 'me' && <Text size="xs" color="darkgray" >{hasBeenReadByPeer ? 'read' : 'not read'}</Text>}
+                    <div>{text}</div>
                   </List.Item>
                 ))}
               </List>
@@ -524,12 +572,9 @@ const Page = () => {
                   <TextInput
                     icon={<ChatBubbleIcon />}
                     placeholder="Enter message"
-                    {...form.getInputProps('message')}
+                    {...form.getInputProps('text')}
                   ></TextInput>
-                  <Button
-                    type="submit"
-                    disabled={form.values.message.length < 1}
-                  >
+                  <Button type="submit" disabled={form.values.text.length < 1}>
                     Send
                   </Button>
                 </Group>
