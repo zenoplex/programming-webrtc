@@ -172,6 +172,7 @@ const Page = () => {
     };
 
     const addChatChannel = (peer: RTCPeerConnection) => {
+      console.log('addChatChannel', peer);
       const chatChannel = peer.createDataChannel('CHAT', {
         negotiated: true,
         id: 51,
@@ -190,8 +191,8 @@ const Page = () => {
       chatChannel.onmessage = (e: MessageEvent<string>) => {
         setMessages((s) => [...s, { sender: 'peer', message: e.data }]);
       };
-      chatChannel.onclose = () => {
-        console.log('Chat channel closed.');
+      chatChannel.onclose = (e: Event) => {
+        console.log('Chat channel closed.', e);
       };
       peerChatChannel.current = chatChannel;
     };
@@ -212,6 +213,8 @@ const Page = () => {
       newRpc.onnegotiationneeded = onNegotiationNeeded;
       newRpc.onicecandidate = onIceCandidate;
       newRpc.ontrack = onTrack;
+      newRpc.onconnectionstatechange = onConnectionStateChange;
+      newRpc.ondatachannel = onDataChannel;
       addStreamingMedia(newRpc);
       addChatChannel(newRpc);
 
@@ -307,7 +310,7 @@ const Page = () => {
           // If not ignoring offers then has no choice but to respond
           isSettingRemoteAnswerPending.current = description.type === 'answer';
           try {
-            // console.log('description', description);
+            console.log('remote description', description);
             console.log('SingnalingState', rpc.signalingState);
             await rpc.setRemoteDescription(description);
           } catch (err) {
