@@ -114,11 +114,10 @@ const Page = () => {
     });
 
     const onNegotiationNeeded = async () => {
+      console.log('onNegotiationNeeded');
       if (!peer.current) return;
       const rpc = peer.current;
       if (isSuppressingInitialOffer.current) return;
-
-      console.log('onNegotiationNeeded');
 
       try {
         isMakingOffer.current = true;
@@ -177,7 +176,9 @@ const Page = () => {
         negotiated: true,
         id: 51,
       });
+
       chatChannel.onopen = () => {
+        console.log('Chat channel open.');
         chatChannel.send('Hi!');
 
         // Send queued messages and clear the queue
@@ -196,6 +197,7 @@ const Page = () => {
     };
 
     const resetAndRetryConnection = (rpc: RTCPeerConnection) => {
+      console.info('resetAndRetryConnection');
       isMakingOffer.current = false;
       isIgnoringOffer.current = false;
       isSettingRemoteAnswerPending.current = false;
@@ -210,15 +212,13 @@ const Page = () => {
       newRpc.onnegotiationneeded = onNegotiationNeeded;
       newRpc.onicecandidate = onIceCandidate;
       newRpc.ontrack = onTrack;
-      newRpc.onconnectionstatechange = onConnectionStateChange;
-      newRpc.ondatachannel = onDataChannel;
       addStreamingMedia(newRpc);
       addChatChannel(newRpc);
 
       peer.current = newRpc;
 
       if (isPolite.current) {
-        sc.emit(SIGNAL_EVENT, { descrition: { type: '_reset' } });
+        sc.emit(SIGNAL_EVENT, { description: { type: '_reset' } });
       }
     };
 
@@ -276,7 +276,7 @@ const Page = () => {
         description?: RTCSessionDescription;
         candidate: RTCIceCandidate;
       }) => {
-        console.log('SIGNAL_EVENT', { description, candidate });
+        console.log('SIGNAL_EVENT', `description: ${description?.type}`);
 
         if (!peer.current) return;
         const rpc = peer.current;
@@ -307,7 +307,7 @@ const Page = () => {
           // If not ignoring offers then has no choice but to respond
           isSettingRemoteAnswerPending.current = description.type === 'answer';
           try {
-            console.log('description', description);
+            // console.log('description', description);
             console.log('SingnalingState', rpc.signalingState);
             await rpc.setRemoteDescription(description);
           } catch (err) {
@@ -335,7 +335,6 @@ const Page = () => {
           // Handle ICE candidate
         } else if (candidate) {
           try {
-            console.log(rpc.signalingState);
             await rpc.addIceCandidate(candidate);
           } catch (e) {
             // Log error unless ignoring offers and candidate is not an empty string
