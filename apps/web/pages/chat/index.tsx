@@ -374,6 +374,8 @@ const Page = () => {
       if (peerVideoRef.current) peerVideoRef.current.srcObject = null;
       peer.current?.close();
       peer.current = null;
+      // Reset to default state
+      isPolite.current = false;
     } else {
       socket?.open();
     }
