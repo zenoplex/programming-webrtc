@@ -533,8 +533,8 @@ const Page = () => {
             dataChannel.send(data.slice(i, i + chunk));
           }
         };
-        dataChannel.onmessage = (e: MessageEvent<any>) => {
-          const data = JSON.parse(e.data);
+        dataChannel.onmessage = (e: MessageEvent<string>) => {
+          const data: MessageResponse = JSON.parse(e.data);
           setMessages((s) =>
             s.map((item) => {
               if (item.timestamp === data.id) {
