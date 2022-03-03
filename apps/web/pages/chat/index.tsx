@@ -48,6 +48,12 @@ const streamFilters = [
   'psychedelic',
 ] as const;
 
+interface FileMetaData {
+  type: string;
+  name: string;
+  size: number;
+}
+
 type Message =
   | {
       sender: string;
@@ -60,12 +66,8 @@ type Message =
       sender: string;
       type: 'image';
       timestamp: number;
-      metadata: {
-        type: string;
-        name: string;
-        size: number;
-      };
-      file: File;
+      metadata: FileMetaData;
+      file: File | Blob;
       hasBeenReadByPeer: boolean;
     };
 
@@ -185,11 +187,53 @@ const Page = () => {
       if (label.startsWith('FILTER-')) {
         const filter = label.replace('FILTER-', '');
         setPeerStreamFilter(filter as typeof streamFilters[number]);
-      }
 
-      e.channel.onopen = () => {
-        e.channel.close();
-      };
+        e.channel.onopen = () => {
+          e.channel.close();
+        };
+      }
+      if (label.startsWith('IMAGE-')) {
+        const chunks: ArrayBuffer[] = [];
+        let metadata: FileMetaData & { timestamp: number };
+        let bytesReceived = 0;
+        // TODO: type message data
+        e.channel.onmessage = (event: MessageEvent<string | ArrayBuffer>) => {
+          // Metadata
+          if (typeof event.data === 'string') {
+            metadata = JSON.parse(event.data);
+          } else {
+            console.log(event.data.byteLength, event.data.size, metadata);
+            bytesReceived += event.data.byteLength;
+            chunks.push(event.data);
+            if (bytesReceived === metadata.size) {
+              const image = new Blob(chunks, { type: metadata.type });
+
+              setMessages((s) => [
+                ...s,
+                {
+                  sender: 'peer',
+                  type: 'image' as const,
+                  file: image,
+                  metadata,
+                  hasBeenReadByPeer: false,
+                  timestamp: Date.now(),
+                },
+              ]);
+
+              const response = {
+                id: metadata.timestamp,
+                timestamp: Date.now(),
+              };
+
+              try {
+                e.channel.send(JSON.stringify(response));
+              } catch (err) {
+                messageQueue.current.push(response);
+              }
+            }
+          }
+        };
+      }
     };
 
     const addStreamingMedia = (peer: RTCPeerConnection) => {
@@ -463,17 +507,48 @@ const Page = () => {
         size: file.size,
       };
 
-      setMessages((s) => [
-        ...s,
-        {
-          sender: 'me',
-          type: 'image',
-          metadata,
-          file,
-          timestamp: Date.now(),
-          hasBeenReadByPeer: false,
-        },
-      ]);
+      const message = {
+        sender: 'me',
+        type: 'image' as const,
+        metadata,
+        file,
+        timestamp: Date.now(),
+        hasBeenReadByPeer: false,
+      };
+
+      setMessages((s) => [...s, message]);
+      e.target.remove();
+
+      if (peer.current && peer.current.connectionState === 'connected') {
+        const rtc = peer.current;
+        const dataChannel = rtc.createDataChannel(`IMAGE-${metadata.name}`);
+        const chunk = 8 * 1024;
+        dataChannel.onopen = async () => {
+          dataChannel.binaryType = 'arraybuffer';
+          // adding timestamp since receiver need to send response based on timestamp
+          dataChannel.send(
+            JSON.stringify({ ...metadata, timestamp: message.timestamp })
+          );
+          const data = await file.arrayBuffer();
+          for (let i = 0; i < metadata.size; i += chunk) {
+            dataChannel.send(data.slice(i, i + chunk));
+          }
+        };
+        dataChannel.onmessage = (e: MessageEvent<any>) => {
+          const data = JSON.parse(e.data);
+          setMessages((s) =>
+            s.map((item) => {
+              if (item.timestamp === data.id) {
+                item.hasBeenReadByPeer = true;
+              }
+              return item;
+            })
+          );
+          dataChannel.close();
+        };
+      } else {
+        messageQueue.current.push(message);
+      }
     };
     document.body.appendChild(input);
     input.click();
