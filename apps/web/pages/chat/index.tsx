@@ -202,7 +202,6 @@ const Page = () => {
           if (typeof event.data === 'string') {
             metadata = JSON.parse(event.data);
           } else {
-            console.log(event.data.byteLength, event.data.size, metadata);
             bytesReceived += event.data.byteLength;
             chunks.push(event.data);
             if (bytesReceived === metadata.size) {
