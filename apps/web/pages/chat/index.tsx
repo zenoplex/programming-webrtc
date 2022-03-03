@@ -48,12 +48,26 @@ const streamFilters = [
   'psychedelic',
 ] as const;
 
-interface Message {
-  sender: string;
-  text: string;
-  timestamp: number;
-  hasBeenReadByPeer: boolean;
-}
+type Message =
+  | {
+      sender: string;
+      type: 'text';
+      text: string;
+      timestamp: number;
+      hasBeenReadByPeer: boolean;
+    }
+  | {
+      sender: string;
+      type: 'image';
+      timestamp: number;
+      metadata: {
+        type: string;
+        name: string;
+        size: number;
+      };
+      file: File;
+      hasBeenReadByPeer: boolean;
+    };
 
 interface MessageResponse {
   id: number;
@@ -81,6 +95,7 @@ const Page = () => {
   const myStream = useRef<MediaStream | null>(null);
   const myVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerVideoRef = useRef<HTMLVideoElement | null>(null);
+  // Should store message as dictionary rather than array for performance reason
   const [messages, setMessages] = useState<Message[]>([]);
   const messageQueue = useRef<(Message | MessageResponse)[]>([]);
 
@@ -91,6 +106,7 @@ const Page = () => {
     async (values: { text: string }) => {
       const message = {
         sender: 'me',
+        type: 'text' as const,
         text: values.text,
         timestamp: Date.now(),
         hasBeenReadByPeer: false,
@@ -204,16 +220,14 @@ const Page = () => {
         messageQueue.current = [];
       };
       chatChannel.onmessage = (e: MessageEvent<string>) => {
-        const message = JSON.parse(e.data) as (Message | MessageResponse);
+        const message = JSON.parse(e.data) as Message | MessageResponse;
 
         if (!('id' in message)) {
           setMessages((s) => [
             ...s,
             {
+              ...message,
               sender: 'peer',
-              text: message.text,
-              timestamp: message.timestamp,
-              hasBeenReadByPeer: false
             },
           ]);
 
@@ -221,21 +235,22 @@ const Page = () => {
           const response: MessageResponse = {
             id: message.timestamp,
             timestamp: Date.now(),
-          }
+          };
 
-          try { 
-          chatChannel.send(JSON.stringify(response));
-        } catch (err) {
-          messageQueue.current.push(response);
-        }
-          
+          try {
+            chatChannel.send(JSON.stringify(response));
+          } catch (err) {
+            messageQueue.current.push(response);
+          }
         } else {
-          setMessages(s => s.map(item => {
-            if (item.timestamp === message.id) {
-              item.hasBeenReadByPeer = true;
-            }
-            return item;
-          }));
+          setMessages((s) =>
+            s.map((item) => {
+              if (item.timestamp === message.id) {
+                item.hasBeenReadByPeer = true;
+              }
+              return item;
+            })
+          );
         }
       };
       chatChannel.onclose = (e: Event) => {
@@ -428,6 +443,42 @@ const Page = () => {
     }
   }, [isSocketConnected, socket]);
 
+  const onFileButtonClick = useCallback(() => {
+    const input =
+      document.querySelector<HTMLInputElement>('input.TEMP') ||
+      document.createElement('input');
+    input.className = 'TEMP';
+    input.type = 'file';
+    input.accept = '.gif,.jpg,.jpeg,.png';
+    input.setAttribute('aria-hidden', 'true');
+    input.onchange = async (e) => {
+      if (!(e.target instanceof HTMLInputElement)) return;
+
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const metadata = {
+        type: file.type,
+        name: file.name,
+        size: file.size,
+      };
+
+      setMessages((s) => [
+        ...s,
+        {
+          sender: 'me',
+          type: 'image',
+          metadata,
+          file,
+          timestamp: Date.now(),
+          hasBeenReadByPeer: false,
+        },
+      ]);
+    };
+    document.body.appendChild(input);
+    input.click();
+  }, []);
+
   const onMyVideoClick = useCallback(() => {
     if (
       myVideoRef.current &&
@@ -545,25 +596,40 @@ const Page = () => {
           <Grid grow>
             <Grid.Col span={12}>
               <List spacing="xs" size="sm" center>
-                {messages.map(({ sender, text, hasBeenReadByPeer }, index) => (
-                  <List.Item
-                    icon={
-                      <ThemeIcon size={24} radius="xl">
-                        <Avatar
-                          color={sender === 'me' ? 'red' : 'cyan'}
-                          radius="xl"
-                          size={24}
-                        >
-                          {sender}
-                        </Avatar>
-                      </ThemeIcon>
-                    }
-                    key={index}
-                  >
-                    {sender === 'me' && <Text size="xs" color="darkgray" >{hasBeenReadByPeer ? 'read' : 'not read'}</Text>}
-                    <div>{text}</div>
-                  </List.Item>
-                ))}
+                {messages.map((msg, index) => {
+                  return (
+                    <List.Item
+                      icon={
+                        <ThemeIcon size={24} radius="xl">
+                          <Avatar
+                            color={msg.sender === 'me' ? 'red' : 'cyan'}
+                            radius="xl"
+                            size={24}
+                          >
+                            {msg.sender}
+                          </Avatar>
+                        </ThemeIcon>
+                      }
+                      key={index}
+                    >
+                      {msg.sender === 'me' && (
+                        <Text size="xs" color="darkgray">
+                          {msg.hasBeenReadByPeer ? 'read' : 'not read'}
+                        </Text>
+                      )}
+                      {msg.type === 'text' && <div>{msg.text}</div>}
+                      {msg.type === 'image' && (
+                        <img
+                          src={URL.createObjectURL(msg.file)}
+                          alt={msg.metadata.name}
+                          onLoad={(e) => {
+                            URL.revokeObjectURL(e.currentTarget.src);
+                          }}
+                        />
+                      )}
+                    </List.Item>
+                  );
+                })}
               </List>
             </Grid.Col>
             <Grid.Col>
@@ -577,6 +643,7 @@ const Page = () => {
                   <Button type="submit" disabled={form.values.text.length < 1}>
                     Send
                   </Button>
+                  <Button onClick={onFileButtonClick}>image</Button>
                 </Group>
               </form>
             </Grid.Col>
